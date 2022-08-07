@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=dockerd
-PKG_VERSION:=20.10.8
-PKG_RELEASE:=1
+PKG_VERSION:=20.10.17
+PKG_RELEASE:=$(AUTORELEASE)
 PKG_LICENSE:=Apache-2.0
 PKG_LICENSE_FILES:=LICENSE
 
@@ -10,8 +10,8 @@ PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_GIT_URL:=github.com/moby/moby
 PKG_GIT_REF:=v$(PKG_VERSION)
 PKG_SOURCE_URL:=https://codeload.$(PKG_GIT_URL)/tar.gz/$(PKG_GIT_REF)?
-PKG_HASH:=2505d00032f5d40ead5ac779c2840303dcead04713c93ba974be4c19b3ab8d0a
-PKG_GIT_SHORT_COMMIT:=75249d8 # SHA1 used within the docker executables
+PKG_HASH:=061cf8579aa3c813c353c80fa480744e2f6cca2e6392f546bd0942a6a10c7a14
+PKG_GIT_SHORT_COMMIT:=a89b842 # SHA1 used within the docker executables
 
 PKG_MAINTAINER:=Gerard Ryan <G.M0N3Y.2503@gmail.com>
 
@@ -34,8 +34,8 @@ define Package/dockerd
   TITLE:=Docker Community Edition Daemon
   URL:=https://www.docker.com/
   DEPENDS:=$(GO_ARCH_DEPENDS) +btrfs-progs +ca-certificates +containerd +libdevmapper +libnetwork +tini \
-           +KERNEL_SECCOMP:libseccomp +iptables-mod-extra +kmod-br-netfilter +kmod-ikconfig +kmod-nf-conntrack-netlink +kmod-nf-ipvs \
-           +kmod-nf-nat +kmod-veth
+           +@KERNEL_NAMESPACES +KERNEL_SECCOMP:libseccomp +iptables-mod-extra +kmod-br-netfilter +kmod-ikconfig \
+           +kmod-nf-conntrack-netlink +kmod-nf-ipvs +kmod-nf-nat +kmod-veth
   USERID:=docker:docker
   MENU:=1
 endef
@@ -51,10 +51,24 @@ endef
 GO_PKG_BUILD_VARS += GO111MODULE=auto
 TAR_OPTIONS:=--strip-components 1 $(TAR_OPTIONS)
 TAR_CMD=$(HOST_TAR) -C $(1) $(TAR_OPTIONS)
+TARGET_LDFLAGS += $(if $(CONFIG_USE_GLIBC),-lc -lgcc_eh)
 
 # $(1) = path to dependent package 'Makefile'
 # $(2) = relevant dependency '.installer' file
 define EnsureVendoredVersion
+	( \
+		DEP_VER=$$$$( grep --only-matching --perl-regexp '(?<=PKG_VERSION:=)(.*)' "$(1)" ); \
+		VEN_VER=$$$$( grep --only-matching --perl-regexp '(?<=_VERSION:=v)(.*)(?=})' "$(PKG_BUILD_DIR)/hack/dockerfile/install/$(2)" ); \
+		if [ "$$$${VEN_VER}" != "$$$${DEP_VER}" ]; then \
+			echo "ERROR: Expected 'PKG_VERSION:=$$$${VEN_VER}' in '$(1)', found 'PKG_VERSION:=$$$${DEP_VER}'"; \
+			exit 1; \
+		fi \
+	)
+endef
+
+# $(1) = path to dependent package 'Makefile'
+# $(2) = relevant dependency '.installer' file
+define EnsureVendoredCommit
 	( \
 		DEP_VER=$$$$( grep --only-matching --perl-regexp '(?<=PKG_SOURCE_VERSION:=)(.*)' "$(1)" ); \
 		VEN_VER=$$$$( grep --only-matching --perl-regexp '(?<=_COMMIT:=)(.*)(?=})' "$(PKG_BUILD_DIR)/hack/dockerfile/install/$(2)" ); \
@@ -70,7 +84,7 @@ define Build/Prepare
 
 	# Verify dependencies are the vendored version
 	$(call EnsureVendoredVersion,../containerd/Makefile,containerd.installer)
-	$(call EnsureVendoredVersion,../libnetwork/Makefile,proxy.installer)
+	$(call EnsureVendoredCommit,../libnetwork/Makefile,proxy.installer)
 	$(call EnsureVendoredVersion,../runc/Makefile,runc.installer)
 	$(call EnsureVendoredVersion,../tini/Makefile,tini.installer)
 
@@ -120,6 +134,9 @@ define Package/dockerd/install
 	$(INSTALL_DIR) $(1)/opt/docker/
 	$(INSTALL_DIR) $(1)/usr/share/docker/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/contrib/check-config.sh $(1)/usr/share/docker/
+
+	$(INSTALL_DIR) $(1)/etc/docker
+	$(INSTALL_CONF) ./files/daemon.json $(1)/etc/docker/
 
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/dockerd.init $(1)/etc/init.d/dockerd

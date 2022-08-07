@@ -1,10 +1,10 @@
 #!/bin/sh
 # dns based ad/abuse domain blocking
-# Copyright (c) 2015-2021 Dirk Brenken (dev@brenken.org)
+# Copyright (c) 2015-2022 Dirk Brenken (dev@brenken.org)
 # This is free software, licensed under the GNU General Public License v3.
 
 # set (s)hellcheck exceptions
-# shellcheck disable=1091,2010,2016,2034,2039,2059,2086,2091,2129,2143,2154,2181,2183,2188
+# shellcheck disable=1091,2010,2016,2034,2039,2059,2086,2091,2129,2143,2154,2181,2183,2188,3040,3043,3060
 
 # set initial defaults
 #
@@ -54,6 +54,7 @@ adb_repiface=""
 adb_replisten="53"
 adb_repchunkcnt="5"
 adb_repchunksize="1"
+adb_represolve="0"
 adb_lookupdomain="example.com"
 adb_action="${1:-"start"}"
 adb_packages=""
@@ -216,9 +217,6 @@ f_conf()
 			elif [ "${option}" = "adb_eng_sources" ]
 			then
 				eval "${option}=\"$(printf "%s" "${adb_eng_sources}") ${value}\""
-			elif [ "${option}" = "adb_sha_sources" ]
-			then
-				eval "${option}=\"$(printf "%s" "${adb_sha_sources}") ${value}\""
 			elif [ "${option}" = "adb_stb_sources" ]
 			then
 				eval "${option}=\"$(printf "%s" "${adb_stb_sources}") ${value}\""
@@ -318,7 +316,7 @@ f_dns()
 				adb_dnsinstance="${adb_dnsinstance:-"0"}"
 				adb_dnsuser="${adb_dnsuser:-"dnsmasq"}"
 				adb_dnsdir="${adb_dnsdir:-"/tmp/dnsmasq.d"}"
-				adb_dnsheader="${adb_dnsheader}"
+				adb_dnsheader="${adb_dnsheader:-""}"
 				adb_dnsdeny="${adb_dnsdeny:-"${adb_awk} '{print \"address=/\"\$0\"/\"}'"}"
 				adb_dnsallow="${adb_dnsallow:-"${adb_awk} '{print \"local=/\"\$0\"/#\"}'"}"
 				adb_dnssafesearch="${adb_dnssafesearch:-"${adb_awk} -v item=\"\$item\" '{print \"address=/\"\$0\"/\"item\"\"}'"}"
@@ -330,7 +328,7 @@ f_dns()
 				adb_dnsinstance="${adb_dnsinstance:-"0"}"
 				adb_dnsuser="${adb_dnsuser:-"unbound"}"
 				adb_dnsdir="${adb_dnsdir:-"/var/lib/unbound"}"
-				adb_dnsheader="${adb_dnsheader}"
+				adb_dnsheader="${adb_dnsheader:-""}"
 				adb_dnsdeny="${adb_dnsdeny:-"${adb_awk} '{print \"local-zone: \\042\"\$0\"\\042 static\"}'"}"
 				adb_dnsallow="${adb_dnsallow:-"${adb_awk} '{print \"local-zone: \\042\"\$0\"\\042 transparent\"}'"}"
 				adb_dnssafesearch="${adb_dnssafesearch:-"${adb_awk} -v item=\"\$item\" '{type=\"AAAA\";if(match(item,/^([0-9]{1,3}\.){3}[0-9]{1,3}$/)){type=\"A\"}}{print \"local-data: \\042\"\$0\" \"type\" \"item\"\\042\"}'"}"
@@ -368,7 +366,7 @@ f_dns()
 				adb_dnsinstance="${adb_dnsinstance:-"0"}"
 				adb_dnsuser="${adb_dnsuser:-"root"}"
 				adb_dnsdir="${adb_dnsdir:-"/tmp"}"
-				adb_dnsheader="${adb_dnsheader}"
+				adb_dnsheader="${adb_dnsheader:-""}"
 				adb_dnsdeny="${adb_dnsdeny:-"0"}"
 				adb_dnsallow="${adb_dnsallow:-"1"}"
 				adb_dnssafesearch="${adb_dnssafesearch:-"0"}"
@@ -404,7 +402,10 @@ f_dns()
 			sleep 1
 			cnt=$((cnt+1))
 		done
+	fi
 
+	if [ "${adb_action}" != "stop" ]
+	then
 		if [ -n "${adb_dnsdir}" ] && [ ! -d "${adb_dnsdir}" ]
 		then
 			mkdir -p "${adb_dnsdir}"
@@ -415,7 +416,7 @@ f_dns()
 				f_log "err" "dns backend directory '${adb_dnsdir}' could not be created"
 			fi
 		fi
-
+		
 		if [ ! -f "${adb_dnsdir}/${adb_dnsfile}" ]
 		then
 			printf "${adb_dnsheader}" > "${adb_dnsdir}/${adb_dnsfile}"
@@ -915,7 +916,7 @@ f_list()
 		"safesearch")
 			case "${src_name}" in
 				"google")
-					rset="/^(\\.[[:alnum:]_-]{1,63}\\.)+[[:alpha:]]+([[:space:]]|$)/{printf \"%s\n%s\n\",tolower(\"www\"\$1),tolower(substr(\$1,2,length(\$1)))}"
+					rset="/^\\.([[:alnum:]_-]{1,63}\\.)+[[:alpha:]]+([[:space:]]|$)/{printf \"%s\n%s\n\",tolower(\"www\"\$1),tolower(substr(\$1,2,length(\$1)))}"
 					safe_url="https://www.google.com/supported_domains"
 					safe_cname="forcesafesearch.google.com"
 					safe_domains="${adb_tmpdir}/tmp.load.safesearch.${src_name}"
@@ -1292,9 +1293,9 @@ f_jsnup()
 			memory="$("${adb_awk}" '/^MemTotal|^MemFree|^MemAvailable/{ORS="/"; print int($2/1000)}' "/proc/meminfo" 2>/dev/null | "${adb_awk}" '{print substr($0,1,length($0)-1)}')"
 			if [ "$(( (adb_endtime-adb_starttime)/60 ))" -lt 60 ]
 			then
-				runtime="${adb_action}, $(( (adb_endtime-adb_starttime)/60 ))m $(( (adb_endtime-adb_starttime)%60 ))s, ${memory:-0}, $(date "+%d.%m.%Y %H:%M:%S")"
+				runtime="${adb_action}, $(( (adb_endtime-adb_starttime)/60 ))m $(( (adb_endtime-adb_starttime)%60 ))s, ${memory:-0}, $(date -Iseconds)"
 			else
-				runtime="${adb_action}, n/a, ${memory:-0}, $(date "+%d.%m.%Y %H:%M:%S")"
+				runtime="${adb_action}, n/a, ${memory:-0}, $(date -Iseconds)"
 			fi
 			if [ "${status}" = "error" ]
 			then
@@ -1482,15 +1483,9 @@ f_main()
 		# download queue processing
 		#
 		unset src_cat src_entries
-		if [ "${src_name}" = "shallalist" ] || [ "${src_name}" = "utcapitole" ]
+		if [ "${src_name}" = "utcapitole" ] && [ -n "${adb_utc_sources}" ]
 		then
-			if [ "${src_name}" = "shallalist" ] && [ -n "${adb_sha_sources}" ]
-			then
-				src_cat="${adb_sha_sources}"
-			elif [ "${src_name}" = "utcapitole" ] && [ -n "${adb_utc_sources}" ]
-			then
-				src_cat="${adb_utc_sources}"
-			fi
+			src_cat="${adb_utc_sources}"
 			if [ -n "${src_cat}" ]
 			then
 				(
@@ -1653,7 +1648,7 @@ f_main()
 #
 f_report()
 {
-	local report_raw report_json report_txt content status total start end blocked percent top_list top array item index hold ports value key key_list cnt=0 action="${1}" count="${2:-"50"}" search="${3:-"+"}"
+	local report_raw report_json report_txt content status total start end blocked percent top_list top array item index hold ports value key key_list cnt=0 resolve="-nn" action="${1}" count="${2:-"50"}" search="${3:-"+"}"
 
 	report_raw="${adb_reportdir}/adb_report.raw"
 	report_srt="${adb_reportdir}/adb_report.srt"
@@ -1668,10 +1663,14 @@ f_report()
 		> "${report_srt}"
 		> "${report_txt}"
 		> "${report_jsn}"
+		if [ "${adb_represolve}" = "1" ]
+		then
+			resolve=""
+		fi
 		for file in "${adb_reportdir}/adb_report.pcap"*
 		do
 			(
-				"${adb_dumpcmd}" -nn -tttt -r "${file}" 2>/dev/null | \
+				"${adb_dumpcmd}" "${resolve}" -tttt -r "${file}" 2>/dev/null | \
 					"${adb_awk}" -v cnt="${cnt}" '!/\.lan\. |PTR\? | SOA\? /&&/ A[\? ]+|NXDomain|0\.0\.0\.0/{a=$1;b=substr($2,0,8);c=$4;sub(/\.[0-9]+$/,"",c);gsub(/[^[:alnum:]\.:-]/,"",c);d=cnt $7;sub(/\*$/,"",d);
 					e=$(NF-1);sub(/[0-9]\/[0-9]\/[0-9]|0\.0\.0\.0/,"NX",e);sub(/\.$/,"",e);sub(/([0-9]{1,3}\.){3}[0-9]{1,3}/,"OK",e);gsub(/[^[:alnum:]\.-]/,"",e);if(e==""){e="err"};printf "%s\t%s\t%s\t%s\t%s\n",d,e,a,b,c}' >> "${report_raw}"
 			)&
@@ -1810,7 +1809,7 @@ f_report()
 		( "${adb_mailservice}" "${adb_ver}" "${content}" >/dev/null 2>&1 )&
 		bg_pid="${!}"
 	fi
-	f_log "debug" "f_report ::: action: ${action}, count: ${count}, search: ${search}, dump_util: ${adb_dumpcmd}, rep_dir: ${adb_reportdir}, rep_iface: ${adb_repiface:-"-"}, rep_listen: ${adb_replisten}, rep_chunksize: ${adb_repchunksize}, rep_chunkcnt: ${adb_repchunkcnt}"
+	f_log "debug" "f_report ::: action: ${action}, count: ${count}, search: ${search}, dump_util: ${adb_dumpcmd}, rep_dir: ${adb_reportdir}, rep_iface: ${adb_repiface:-"-"}, rep_listen: ${adb_replisten}, rep_chunksize: ${adb_repchunksize}, rep_chunkcnt: ${adb_repchunkcnt}, rep_resolve: ${adb_represolve}"
 }
 
 # source required system libraries
