@@ -8,12 +8,12 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=gstreamer1
-PKG_VERSION:=1.18.5
-PKG_RELEASE:=$(AUTORELEASE)
+PKG_VERSION:=1.20.4
+PKG_RELEASE:=1
 
 PKG_SOURCE:=gstreamer-$(PKG_VERSION).tar.xz
 PKG_SOURCE_URL:=https://gstreamer.freedesktop.org/src/gstreamer
-PKG_HASH:=55862232a63459bbf56abebde3085ca9aec211b478e891dacea4d6df8cafe80a
+PKG_HASH:=67c1edf8c3c339cda5dde85f4f7b953bb9607c2d13ae970e2491c5c4c055ef5f
 PKG_BUILD_DIR:=$(BUILD_DIR)/gstreamer-$(PKG_VERSION)
 
 PKG_MAINTAINER:=W. Michael Petullo <mike@flyn.org> \
@@ -133,7 +133,6 @@ MESON_ARGS += \
 	-Dexamples=disabled \
 	-Dbenchmarks=disabled \
 	-Dtools=enabled \
-	-Dgtk_doc=disabled \
 	-Dintrospection=disabled \
 	-Dnls=enabled \
 	-Dgobject-cast-checks=disabled \
